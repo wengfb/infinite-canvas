@@ -728,6 +728,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
     try {
         const payload = {
             model: requestConfig.model,
+            ...(isPoopiiEmbedded() && requestConfig.group ? { group: requestConfig.group } : {}),
             prompt: withSystemPrompt(requestConfig, prompt),
             n,
             ...(quality ? { quality } : {}),
@@ -789,6 +790,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const background = normalizeBackground(config.background);
     const formData = new FormData();
     formData.set("model", requestConfig.model);
+    if (isPoopiiEmbedded() && requestConfig.group) formData.set("group", requestConfig.group);
     formData.set("prompt", withSystemPrompt(requestConfig, requestPrompt));
     formData.set("n", String(n));
     // gpt-image models reject response_format; they always return b64.

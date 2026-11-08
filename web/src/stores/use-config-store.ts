@@ -4,6 +4,8 @@ import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
+import { usePoopiiCatalogStore } from "@/stores/use-poopii-catalog-store";
+import type { PoopiiImageCatalog } from "@/services/api/poopii";
 
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
@@ -16,6 +18,7 @@ export type ChannelModel = {
 };
 
 export type ModelChannel = {
+    group?: string;
     id: string;
     name: string;
     baseUrl: string;
@@ -25,6 +28,7 @@ export type ModelChannel = {
 };
 
 export type AiConfig = {
+    group?: string;
     channelMode: "remote" | "local";
     baseUrl: string;
     apiKey: string;
@@ -185,6 +189,9 @@ export function modelMatchesCapability(config: AiConfig, value: string, capabili
 }
 
 export function resolveModelForCapability(config: AiConfig, currentModel: string | undefined, capability: ModelCapability) {
+    // Existing standalone node selections adopt the host default on first embed.
+    // Explicit host selections remain intact if a group/model is later removed.
+    if (config.group !== undefined && capability === "image" && !decodeChannelModel(currentModel || "")?.channelId.startsWith("poopii:")) return config.imageModel;
     const defaultModel = capability === "image" ? config.imageModel : capability === "video" ? config.videoModel : capability === "audio" ? config.audioModel : config.textModel;
     const fallbackModel = capability === "image" ? defaultConfig.imageModel : capability === "video" ? defaultConfig.videoModel : capability === "audio" ? defaultConfig.audioModel : defaultConfig.textModel;
     for (const model of [currentModel, defaultModel]) {
@@ -209,7 +216,7 @@ export function resolveModelScript(config: AiConfig, value: string) {
 
 function isAiConfigReady(config: AiConfig, model: string) {
     const match = findChannelModel(config, model);
-    if (typeof document !== "undefined" && document.documentElement.dataset.poopiiEmbed === "true" && match?.model.capability === "image") return true;
+    if (config.group !== undefined) return Boolean(match?.channel.group && match.model.capability === "image");
     return Boolean(match && match.channel.baseUrl.trim() && match.channel.apiKey.trim());
 }
 
@@ -294,7 +301,25 @@ export const useConfigStore = create<ConfigStore>()(
 
 export function useEffectiveConfig() {
     const config = useConfigStore((state) => state.config);
-    return useMemo(() => ({ ...config, channelMode: "local" as const }), [config]);
+    const enabled = usePoopiiCatalogStore((state) => state.enabled);
+    const catalog = usePoopiiCatalogStore((state) => state.catalog);
+    return useMemo(() => enabled ? embeddedImageConfig(config, catalog) : { ...config, channelMode: "local" as const }, [config, enabled, catalog]);
+}
+
+export function embeddedImageConfig(config: AiConfig, catalog: PoopiiImageCatalog | null): AiConfig {
+    const channels: ModelChannel[] = (catalog?.groups || []).map((group) => ({
+        id: `poopii:${encodeURIComponent(group.name)}`,
+        name: group.name,
+        group: group.name,
+        baseUrl: "",
+        apiKey: "",
+        apiFormat: "openai",
+        models: group.models.map((name) => ({ name, capability: "image" })),
+    }));
+    const preferred = channels.find((channel) => channel.group === catalog?.defaultGroup && channel.models.length) || channels.find((channel) => channel.models.length);
+    const modelName = preferred?.models.find((model) => model.name === modelOptionName(config.imageModel))?.name || preferred?.models[0]?.name;
+    const imageModel = preferred && modelName ? encodeChannelModel(preferred.id, modelName) : "";
+    return { ...config, group: preferred?.group || "", channelMode: "local", channels, models: modelOptionsFromChannels(channels), model: imageModel, imageModel };
 }
 
 /** Normalize a mixed list of raw model names or model objects into deduped ChannelModel entries. */
@@ -441,6 +466,7 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
     return {
         ...config,
         model: modelOptionName(value || config.model),
+        group: channel.group ?? config.group,
         baseUrl: channel.baseUrl,
         apiKey: channel.apiKey,
         apiFormat: channel.apiFormat,

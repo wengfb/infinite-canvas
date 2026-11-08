@@ -6,6 +6,19 @@ export function isPoopiiEmbedded() {
 }
 
 export function requestPoopiiImage<T>(operation: "generations" | "edits", body: Record<string, unknown> | FormData, signal: AbortSignal | undefined, timeout: number): Promise<T> {
+    return requestPoopii<T>({ type: "poopii:canvas-image", operation, timeout, body: body instanceof FormData ? [...body.entries()] : body }, signal);
+}
+
+export type PoopiiImageCatalog = {
+    defaultGroup: string;
+    groups: { name: string; description: string; models: string[] }[];
+};
+
+export function requestPoopiiCatalog(): Promise<PoopiiImageCatalog> {
+    return requestPoopii({ type: "poopii:canvas-catalog" });
+}
+
+function requestPoopii<T>(message: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
     return new Promise((resolve, reject) => {
         if (signal?.aborted) {
             reject(new DOMException("Aborted", "AbortError"));
@@ -27,6 +40,6 @@ export function requestPoopiiImage<T>(operation: "generations" | "edits", body: 
             else resolve(event.data.data as T);
         };
         signal?.addEventListener("abort", abort, { once: true });
-        window.parent.postMessage({ type: "poopii:canvas-image", operation, timeout, body: body instanceof FormData ? [...body.entries()] : body }, window.location.origin, [channel.port2]);
+        window.parent.postMessage(message, window.location.origin, [channel.port2]);
     });
 }

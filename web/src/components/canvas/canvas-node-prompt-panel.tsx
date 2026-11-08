@@ -4,6 +4,7 @@ import { Button, Modal, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { ModelPicker } from "@/components/model-picker";
+import { isEmbeddedCanvas } from "@/lib/embedded-canvas";
 import { defaultConfig, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -42,6 +43,9 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const mode = modeOverride ?? defaultMode(node.type);
     const config = buildNodeConfig(globalConfig, node, mode);
+    const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
+    const embeddedImage = isEmbeddedCanvas() && mode === "image";
+    const ready = !embeddedImage || isAiConfigReady(config, config.model);
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
     const isEditingExistingContent = hasTextContent || hasImageContent;
@@ -62,7 +66,7 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
 
     const submit = () => {
         const text = prompt.trim();
-        if (!text || isRunning) return;
+        if (!text || isRunning || !ready) return;
         onGenerate(node.id, mode, text);
     };
 
@@ -80,6 +84,7 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
             onWheel={(event) => event.stopPropagation()}
         >
             <CanvasNodeReferenceBar nodeId={node.id} nodes={nodes} connectedNodes={connectedNodes} onDisconnect={onDisconnectReference} onStartSelection={onStartReferenceSelection} />
+            {embeddedImage ? <div className="mb-2"><ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="image" fullWidth /></div> : null}
             <CanvasPromptChipInput
                 value={prompt}
                 references={mentionReferences}
@@ -98,7 +103,7 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
                     <CanvasPromptLibrary onSelect={updatePrompt} />
                     {mode === "image" ? (
                         <>
-                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="image" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
+                            {!embeddedImage ? <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="image" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" /> : null}
                             <CanvasImageSettingsPopover
                                 config={config}
                                 placement="topLeft"
@@ -129,7 +134,7 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
                     type="primary"
                     className="!h-10 !min-w-16 shrink-0 !rounded-full !px-3"
                     danger={isRunning}
-                    disabled={!isRunning && !prompt.trim()}
+                    disabled={!isRunning && (!prompt.trim() || !ready)}
                     onClick={() => (isRunning ? onStop(node.id) : submit())}
                     aria-label={t(isRunning ? "canvas.promptPanel.stopGeneration" : "canvas.promptPanel.generate")}
                 >

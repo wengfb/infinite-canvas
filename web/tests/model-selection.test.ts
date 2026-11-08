@@ -18,7 +18,7 @@ afterAll(() => {
     else Reflect.deleteProperty(globalThis, "localStorage");
 });
 
-const { defaultConfig, resolveModelForCapability, useConfigStore } = await import("../src/stores/use-config-store");
+const { defaultConfig, resolveModelForCapability, useConfigStore, embeddedImageConfig, encodeChannelModel, resolveModelRequestConfig } = await import("../src/stores/use-config-store");
 const { buildGenerationConfig } = await import("../src/lib/canvas/canvas-generation-helpers");
 const { CanvasNodeType } = await import("../src/types/canvas");
 
@@ -96,5 +96,74 @@ test("changing only the key on the same provider preserves the saved model and t
 test("unavailable explicit selections are preserved for every generation capability", () => {
     for (const capability of ["image", "video", "text", "audio"] as ModelCapability[]) {
         expect(resolveModelForCapability(config, `removed::${capability}`, capability)).toBe(`removed::${capability}`);
+    }
+});
+
+const embeddedConfig = embeddedImageConfig(defaultConfig, {
+    defaultGroup: "images",
+    groups: [
+        { name: "images", description: "Image creation", models: ["gpt-image-2", "dall-e-3"] },
+        { name: "premium / image", description: "Premium", models: ["gpt-image-2"] },
+        { name: "empty", description: "No image models", models: [] },
+    ],
+});
+
+test("embedded defaults use the authenticated catalog without replacing standalone settings", () => {
+    expect(embeddedConfig.imageModel).toBe("poopii:images::gpt-image-2");
+    expect(ready(embeddedConfig, embeddedConfig.imageModel)).toBe(true);
+    expect(embeddedConfig.channels.every((channel) => !channel.apiKey && !channel.baseUrl)).toBe(true);
+    expect(useConfigStore.getState().config.channels).toEqual(defaultConfig.channels);
+    expect(resolveModelForCapability(embeddedConfig, defaultConfig.imageModel, "image")).toBe(embeddedConfig.imageModel);
+});
+
+test("identical model names retain their explicit group when resolving a request", () => {
+    const model = encodeChannelModel("poopii:" + encodeURIComponent("premium / image"), "gpt-image-2");
+    const selected = resolveModelRequestConfig({ ...embeddedConfig, model }, model);
+    expect(selected.model).toBe("gpt-image-2");
+    expect(selected.group).toBe("premium / image");
+    expect(resolveModelForCapability(embeddedConfig, model, "image")).toBe(model);
+});
+
+test("empty catalogs and removed embedded selections block generation without switching groups", () => {
+    const removed = "poopii:removed::gpt-image-2";
+    expect(resolveModelForCapability(embeddedConfig, removed, "image")).toBe(removed);
+    expect(ready(embeddedConfig, removed)).toBe(false);
+    expect(ready(embeddedConfig, "poopii:empty::")).toBe(false);
+    const unloaded = embeddedImageConfig(defaultConfig, null);
+    expect(ready(unloaded, unloaded.model)).toBe(false);
+});
+
+test("embedded generation and multipart editing send the node's selected group and raw model", async () => {
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+    const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+    const requests: { operation: string; body: Record<string, unknown> | [string, string | File][] }[] = [];
+    Object.defineProperty(globalThis, "document", { configurable: true, value: { documentElement: { dataset: { poopiiEmbed: "true" } } } });
+    Object.defineProperty(globalThis, "window", { configurable: true, value: {
+        location: { origin: "http://host.test" },
+        parent: { postMessage: (message: typeof requests[number], _origin: string, ports: MessagePort[]) => {
+            requests.push(message);
+            ports[0].postMessage({ error: "request captured" });
+            ports[0].close();
+        } },
+    } });
+    try {
+        const { requestGeneration, requestEdit } = await import("../src/services/api/image");
+        const model = encodeChannelModel("poopii:" + encodeURIComponent("premium / image"), "gpt-image-2");
+        const selected = { ...embeddedConfig, model, count: "1" };
+        await expect(requestGeneration(selected, "A blue cup")).rejects.toThrow("request captured");
+        expect(requests[0].operation).toBe("generations");
+        expect(requests[0].body).toMatchObject({ group: "premium / image", model: "gpt-image-2", n: 1 });
+        await expect(requestEdit(selected, "Make it blue", [{ id: "reference", name: "reference.png", type: "image/png", dataUrl: "data:image/png;base64,aW1hZ2U=" }])).rejects.toThrow("request captured");
+        const fields = new Map(requests[1].body as [string, string | File][]);
+        expect(requests[1].operation).toBe("edits");
+        expect(fields.get("group")).toBe("premium / image");
+        expect(fields.get("model")).toBe("gpt-image-2");
+        expect(fields.get("n")).toBe("1");
+        expect(fields.get("image")).toBeInstanceOf(File);
+    } finally {
+        if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+        else Reflect.deleteProperty(globalThis, "window");
+        if (originalDocument) Object.defineProperty(globalThis, "document", originalDocument);
+        else Reflect.deleteProperty(globalThis, "document");
     }
 });

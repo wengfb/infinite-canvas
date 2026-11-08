@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useThemeStore } from "@/stores/use-theme-store";
+import { usePoopiiCatalogStore } from "@/stores/use-poopii-catalog-store";
 
 const colorTokens = [
     "background", "foreground", "card", "card-foreground", "popover", "popover-foreground",
@@ -33,6 +34,7 @@ export function useEmbeddedAppearance() {
             const colors: EmbeddedAppearance["colors"] = {};
             const root = document.documentElement;
             root.dataset.poopiiEmbed = "true";
+            if (!usePoopiiCatalogStore.getState().enabled) void usePoopiiCatalogStore.getState().load();
             for (const token of colorTokens) {
                 const value = data.colors[token];
                 if (typeof value !== "string" || !CSS.supports("color", value)) continue;

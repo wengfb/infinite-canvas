@@ -1,5 +1,6 @@
 import type { ThemeConfig } from "antd";
 import { theme as antdTheme } from "antd";
+import type { EmbeddedAppearance } from "@/hooks/use-embedded-appearance";
 
 const neutral = {
     light: {
@@ -28,13 +29,37 @@ const neutral = {
     },
 };
 
-export function getAntThemeConfig(dark: boolean): ThemeConfig {
-    const color = dark ? neutral.dark : neutral.light;
+export function getAntThemeConfig(dark: boolean, appearance: EmbeddedAppearance | null = null): ThemeConfig {
+    const defaults = dark ? neutral.dark : neutral.light;
+    const host = appearance?.colors;
+    const color = {
+        ...defaults,
+        primary: host?.primary ?? defaults.primary,
+        primaryHover: host?.primary ?? defaults.primaryHover,
+        primaryText: host?.["primary-foreground"] ?? defaults.primaryText,
+        elevatedBg: host?.popover ?? defaults.elevatedBg,
+        itemHoverBg: host?.accent ?? defaults.itemHoverBg,
+        itemSelectedBg: host?.accent ?? defaults.itemSelectedBg,
+        itemSelectedHoverBg: host?.accent ?? defaults.itemSelectedHoverBg,
+        itemText: host?.foreground ?? defaults.itemText,
+    };
 
     return {
         algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         cssVar: { key: dark ? "infinite-canvas-dark" : "infinite-canvas-light" },
         token: {
+            ...(appearance ? {
+                colorBgBase: host?.background,
+                colorBgContainer: host?.card,
+                colorText: host?.foreground,
+                colorTextSecondary: host?.["muted-foreground"],
+                colorBorder: host?.border,
+                colorBorderSecondary: host?.border,
+                fontFamily: appearance.fontFamily,
+                fontSize: appearance.fontSize,
+                borderRadius: appearance.radius,
+                controlHeight: appearance.controlHeight,
+            } : {}),
             colorPrimary: color.primary,
             colorInfo: color.primary,
             colorLink: color.primary,

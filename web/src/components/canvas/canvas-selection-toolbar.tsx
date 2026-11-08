@@ -4,6 +4,7 @@ import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
+import { isEmbeddedCanvas } from "@/lib/embedded-canvas";
 import { nodeBounds } from "@/lib/canvas/canvas-node-geometry";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { CanvasNodeData, ViewportTransform } from "@/types/canvas";
@@ -58,7 +59,7 @@ export function CanvasSelectionToolbar({
             </svg>
             {showActions ? (
                 <div
-                    className="absolute z-[70] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
+                    className="absolute z-[70] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[var(--poopii-radius,18px)] border border-[color:var(--poopii-border,rgba(0,0,0,.1))] bg-[var(--poopii-card,#fff)] text-[length:var(--poopii-font-size,15px)] text-[color:var(--poopii-foreground,#242529)] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
                     style={{ left: left + width / 2, top: top - 8 }}
                     onMouseDown={(event) => event.stopPropagation()}
                     onPointerDown={(event) => event.stopPropagation()}
@@ -73,9 +74,9 @@ export function CanvasSelectionToolbar({
 
 function SelectionAction({ title, label, icon, onClick }: { title: string; label: string; icon: ReactNode; onClick: () => void }) {
     return (
-        <Tooltip title={title} placement="top" mouseEnterDelay={0.2} color="#ffffff" styles={{ root: { color: "#242529", boxShadow: "0 8px 24px rgba(15,23,42,.16)", fontSize: 13, fontWeight: 500 } }}>
+        <Tooltip title={title} placement="top" mouseEnterDelay={0.2} color={isEmbeddedCanvas() ? undefined : "#ffffff"} styles={{ root: { color: isEmbeddedCanvas() ? undefined : "#242529", boxShadow: "0 8px 24px rgba(15,23,42,.16)", fontSize: 13, fontWeight: 500 } }}>
             <button type="button" className="group relative flex h-12 items-center whitespace-nowrap px-1.5" onClick={onClick} aria-label={title}>
-                <span className="flex h-9 items-center gap-2 rounded-lg px-2.5 transition group-hover:bg-[#f0f0f1]">
+                <span className="flex h-9 items-center gap-2 rounded-lg px-2.5 transition group-hover:bg-[var(--poopii-accent,#f0f0f1)]">
                     {icon}
                     <span>{label}</span>
                 </span>

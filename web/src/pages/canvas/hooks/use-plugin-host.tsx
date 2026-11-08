@@ -148,7 +148,7 @@ export function usePluginHost(params: PluginHostParams) {
 
     // Load installed remote plugins on startup.
     useEffect(() => {
-        void ensurePluginsLoaded();
+        if (window.parent === window) void ensurePluginsLoaded();
     }, []);
 
     return { pluginHost, renderPluginPanel, buildNodeToolbarItems };

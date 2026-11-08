@@ -209,6 +209,7 @@ export function resolveModelScript(config: AiConfig, value: string) {
 
 function isAiConfigReady(config: AiConfig, model: string) {
     const match = findChannelModel(config, model);
+    if (typeof document !== "undefined" && document.documentElement.dataset.poopiiEmbed === "true" && match?.model.capability === "image") return true;
     return Boolean(match && match.channel.baseUrl.trim() && match.channel.apiKey.trim());
 }
 

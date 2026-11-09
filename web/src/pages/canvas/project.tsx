@@ -2154,7 +2154,7 @@ function InfiniteCanvasPage() {
     const handleImageInputChange = useCallback(
         async (event: ReactChangeEvent<HTMLInputElement>) => {
             const files = Array.from(event.target.files || []).filter(
-                (f) => f.type.startsWith("image/") || (!isEmbeddedCanvas() && (f.type.startsWith("video/") || isAudioFile(f))),
+                (f) => f.type.startsWith("image/") || (f.type.startsWith("video/") || isAudioFile(f)),
             );
             if (!files.length) {
                 uploadTargetRef.current = null;
@@ -2287,7 +2287,7 @@ function InfiniteCanvasPage() {
         (event: ReactDragEvent<HTMLDivElement>) => {
             event.preventDefault();
             const files = Array.from(event.dataTransfer.files).filter(
-                (item) => item.type.startsWith("image/") || (!isEmbeddedCanvas() && (item.type.startsWith("video/") || isAudioFile(item))),
+                (item) => item.type.startsWith("image/") || (item.type.startsWith("video/") || isAudioFile(item)),
             );
             if (!files.length) return;
 
@@ -3078,7 +3078,7 @@ function InfiniteCanvasPage() {
 
     const renderNodePanel = useCallback(
         (panelNode: CanvasNodeData) =>
-            isEmbeddedCanvas() && panelNode.type !== CanvasNodeType.Image ? null : getNodeDefinition(panelNode.type)?.Panel ? (
+            getNodeDefinition(panelNode.type)?.Panel ? (
                 renderPluginPanel(panelNode)
             ) : panelNode.type === CanvasNodeType.Config ? (
                 <CanvasConfigComposer
@@ -3419,7 +3419,7 @@ function InfiniteCanvasPage() {
                     />
                 ) : null}
 
-                <input ref={imageInputRef} type="file" multiple accept={isEmbeddedCanvas() ? "image/*" : "image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav"} className="hidden" onChange={handleImageInputChange} />
+                <input ref={imageInputRef} type="file" multiple accept="image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" className="hidden" onChange={handleImageInputChange} />
 
                 <CanvasNodeInfoModal node={infoNode} open={Boolean(infoNode)} onClose={() => setInfoNodeId(null)} />
                 <CanvasPluginManagerModal open={pluginManagerOpen} onClose={() => setPluginManagerOpen(false)} />

@@ -5,6 +5,7 @@ import { audioMimeType, normalizeAudioFormatValue, normalizeAudioSpeedValue, nor
 import { uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig } from "@/stores/use-config-store";
 import { runModelPlugin } from "./model-plugin";
+import { isPoopiiEmbedded, requestPoopiiGeneration } from "./poopii";
 
 type RequestOptions = { signal?: AbortSignal };
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
@@ -43,20 +44,22 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
             throw new Error(readAxiosError(error, apiText("audioGenerationFailed")));
         }
     }
-    assertAudioConfig(requestConfig, model);
+    if (!isPoopiiEmbedded()) assertAudioConfig(requestConfig, model);
     const instructions = config.audioInstructions.trim();
 
     try {
-        const response = await axios.post<Blob>(
-            aiApiUrl(requestConfig, "/audio/speech"),
-            {
+        const body = {
                 model,
                 input: prompt,
                 voice: normalizeAudioVoiceValue(config.audioVoice),
                 response_format: format,
                 speed: Number(normalizeAudioSpeedValue(config.audioSpeed)),
                 ...(instructions ? { instructions } : {}),
-            },
+            };
+        const response = isPoopiiEmbedded()
+            ? { data: await requestPoopiiGeneration<Blob>("speech", { ...body, group: requestConfig.group }, options?.signal) }
+            : await axios.post<Blob>(
+            aiApiUrl(requestConfig, "/audio/speech"), body,
             { headers: aiHeaders(requestConfig), responseType: "blob", signal: options?.signal },
         );
         await assertAudioBlob(response.data);

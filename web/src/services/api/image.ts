@@ -9,7 +9,7 @@ import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import { imageSizePresets, inferMediaScale } from "@/lib/media-size";
 import type { ReferenceImage } from "@/types/image";
-import { isPoopiiEmbedded, requestPoopiiImage } from "./poopii";
+import { isPoopiiEmbedded, requestPoopiiImage, requestPoopiiGeneration } from "./poopii";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
@@ -440,6 +440,11 @@ function consumeResponseStreamBlock(block: string, state: ResponseStreamState, o
     const type = stringValue(event.type);
     const errorMessage = responseErrorMessage(event);
     if (errorMessage) state.error = errorMessage;
+    const choice = Array.isArray(event.choices) ? event.choices[0] : undefined;
+    if (typeof choice?.delta?.content === "string") {
+        state.text += choice.delta.content;
+        onDelta?.(state.text);
+    }
     if (type === "response.output_text.delta" && typeof event.delta === "string") {
         state.text += event.delta;
         onDelta?.(state.text);
@@ -843,6 +848,20 @@ export async function requestImageQuestion(config: AiConfig, messages: AiTextMes
         }
     }
     try {
+        if (isPoopiiEmbedded()) {
+            const state: ResponseStreamState = { buffer: "", text: "" };
+            await requestPoopiiGeneration("text", {
+                model: requestConfig.model, group: requestConfig.group,
+                messages: withSystemMessage(requestConfig, messages), stream: true,
+                ...(requestConfig.reasoningEffort === "auto" ? {} : { reasoning_effort: requestConfig.reasoningEffort }),
+            }, options?.signal, undefined, (chunk) => {
+                consumeResponseStreamText(state, chunk, onDelta);
+                if (state.error) throw new Error(state.error);
+            });
+            consumeResponseStreamText(state, "", onDelta, true);
+            if (state.error) throw new Error(state.error);
+            return state.text || apiText("noContent");
+        }
         if (requestConfig.apiFormat === "gemini") {
             const answer = (await requestGeminiStreamingResponse(requestConfig, toGeminiBody(requestConfig, messages), onDelta, options)).content || apiText("noContent");
             if (answer === apiText("noContent")) onDelta(answer);

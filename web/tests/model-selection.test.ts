@@ -18,7 +18,7 @@ afterAll(() => {
     else Reflect.deleteProperty(globalThis, "localStorage");
 });
 
-const { defaultConfig, resolveModelForCapability, useConfigStore, embeddedImageConfig, encodeChannelModel, resolveModelRequestConfig } = await import("../src/stores/use-config-store");
+const { defaultConfig, resolveModelForCapability, useConfigStore, embeddedImageConfig, encodeChannelModel, resolveModelRequestConfig, selectableModelsByCapability, modelMatchesCapability } = await import("../src/stores/use-config-store");
 const { buildGenerationConfig } = await import("../src/lib/canvas/canvas-generation-helpers");
 const { CanvasNodeType } = await import("../src/types/canvas");
 
@@ -166,4 +166,67 @@ test("embedded generation and multipart editing send the node's selected group a
         if (originalDocument) Object.defineProperty(globalThis, "document", originalDocument);
         else Reflect.deleteProperty(globalThis, "document");
     }
+});
+
+const multiConfig = embeddedImageConfig(defaultConfig, {
+ defaultGroup: "all", groups: [{ name: "all", description: "All", models: ["multi"], capabilities: { text: ["multi", "gpt-text"], audio: ["tts-1"], video: ["sora-2"] } }],
+});
+test("each embedded capability has filtered defaults and preserves shared model capabilities", () => {
+ for (const mode of ["text", "audio", "video", "image"] as const) {
+   const value = multiConfig[`${mode}Model`];
+   expect(ready(multiConfig, value)).toBe(true);
+   expect(selectableModelsByCapability(multiConfig, mode)).toContain(value);
+   expect(resolveModelForCapability(multiConfig, defaultConfig[`${mode}Model`], mode)).toBe(value);
+   expect(modelMatchesCapability(multiConfig, value, mode)).toBe(true);
+   expect(resolveModelRequestConfig(multiConfig, value).group).toBe("all");
+   expect(resolveModelForCapability(multiConfig, `poopii:deleted::${mode}`, mode)).toBe(`poopii:deleted::${mode}`);
+ }
+ expect(modelMatchesCapability(multiConfig, "poopii:all::multi", "text")).toBe(true);
+ expect(modelMatchesCapability(multiConfig, "poopii:all::multi", "image")).toBe(true);
+ expect(modelMatchesCapability(multiConfig, "poopii:all::tts-1", "video")).toBe(false);
+});
+
+test("embedded text streams, speech blobs and resumable video tasks use the selected group", async () => {
+ const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+ const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+ const captured: Record<string, any>[] = [];
+ Object.defineProperty(globalThis, "document", { configurable: true, value: { documentElement: { dataset: { poopiiEmbed: "true" } } } });
+ Object.defineProperty(globalThis, "window", { configurable: true, value: {
+  location: { origin: "http://host.test" },
+  parent: { postMessage: (message: Record<string, any>, _origin: string, ports: MessagePort[]) => {
+   captured.push(message);
+   const port = ports[0];
+   if (message.operation === "text") {
+    port.postMessage({ chunk: 'data: {"choices":[{"delta":{"content":"Hello"}}]}\n' });
+    port.postMessage({ chunk: '\ndata: {"choices":[{"delta":{"content":" canvas"}}]}\n\ndata: [DONE]\n\n' });
+    port.postMessage({ data: null });
+   } else if (message.operation === "speech") port.postMessage({ data: new Blob(["audio"], { type: "audio/mpeg" }) });
+   else if (message.operation === "video-create") port.postMessage({ data: { id: "saved-video", status: "queued" } });
+   else if (message.operation === "video-status") port.postMessage({ data: { id: "saved-video", status: "completed", url: "/v1/videos/saved-video/content" } });
+   else port.postMessage({ data: new Blob(["video"], { type: "video/mp4" }) });
+   port.close();
+  } },
+ } });
+ try {
+  const { requestImageQuestion } = await import("../src/services/api/image");
+  const { requestAudioGeneration } = await import("../src/services/api/audio");
+  const { createVideoGenerationTask, pollVideoGenerationTask } = await import("../src/services/api/video");
+  const deltas: string[] = [];
+  expect(await requestImageQuestion({ ...multiConfig, model: multiConfig.textModel }, [{ role: "user", content: "Hi" }], (text) => deltas.push(text))).toBe("Hello canvas");
+  expect(deltas).toEqual(["Hello", "Hello canvas"]);
+  const audio = await requestAudioGeneration({ ...multiConfig, model: multiConfig.audioModel }, "Hello");
+  expect(audio.type).toBe("audio/mpeg");
+  const task = await createVideoGenerationTask({ ...multiConfig, model: multiConfig.videoModel }, "A cat");
+  expect(task).toEqual({ id: "saved-video", provider: "openai", model: multiConfig.videoModel });
+  const result = await pollVideoGenerationTask(multiConfig, task);
+  expect(result.status).toBe("completed");
+  expect(captured[0].body).toMatchObject({ group: "all", model: "multi", stream: true });
+  expect(captured[1].body).toMatchObject({ group: "all", model: "tts-1", input: "Hello" });
+  expect(new Map(captured[2].body).get("group")).toBe("all");
+  expect(new Map(captured[2].body).get("model")).toBe("sora-2");
+  expect(captured.slice(3).map((entry) => [entry.operation, entry.taskId])).toEqual([["video-status", "saved-video"], ["video-content", "saved-video"]]);
+ } finally {
+  if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow); else Reflect.deleteProperty(globalThis, "window");
+  if (originalDocument) Object.defineProperty(globalThis, "document", originalDocument); else Reflect.deleteProperty(globalThis, "document");
+ }
 });

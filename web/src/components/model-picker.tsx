@@ -36,7 +36,7 @@ export function ModelPicker({ config, value, onChange, capability, className, fu
         return () => window.removeEventListener("model-picker-open", closeOtherPicker);
     }, [pickerId]);
 
-    if (isEmbeddedCanvas() && capability === "image") return <PoopiiModelPicker config={config} value={value} onChange={onChange} fullWidth={fullWidth} className={className} />;
+    if (isEmbeddedCanvas() && capability) return <PoopiiModelPicker config={config} value={value} onChange={onChange} capability={capability} fullWidth={fullWidth} className={className} />;
 
     return (
         <Select

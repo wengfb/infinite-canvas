@@ -11,14 +11,18 @@ export function requestPoopiiImage<T>(operation: "generations" | "edits", body: 
 
 export type PoopiiImageCatalog = {
     defaultGroup: string;
-    groups: { name: string; description: string; models: string[] }[];
+    groups: { name: string; description: string; models: string[]; capabilities?: { text: string[]; audio: string[]; video: string[] } }[];
 };
+
+export function requestPoopiiGeneration<T>(operation: "text" | "speech" | "video-create" | "video-status" | "video-content", body?: Record<string, unknown> | FormData, signal?: AbortSignal, taskId?: string, onChunk?: (chunk: string) => void): Promise<T> {
+    return requestPoopii({ type: "poopii:canvas-generation", operation, body: body instanceof FormData ? [...body.entries()] : body, taskId }, signal, onChunk);
+}
 
 export function requestPoopiiCatalog(): Promise<PoopiiImageCatalog> {
     return requestPoopii({ type: "poopii:canvas-catalog" });
 }
 
-function requestPoopii<T>(message: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+function requestPoopii<T>(message: Record<string, unknown>, signal?: AbortSignal, onChunk?: (chunk: string) => void): Promise<T> {
     return new Promise((resolve, reject) => {
         if (signal?.aborted) {
             reject(new DOMException("Aborted", "AbortError"));
@@ -35,6 +39,11 @@ function requestPoopii<T>(message: Record<string, unknown>, signal?: AbortSignal
             reject(new DOMException("Aborted", "AbortError"));
         };
         channel.port1.onmessage = (event) => {
+            if (typeof event.data?.chunk === "string") {
+                try { onChunk?.(event.data.chunk); }
+                catch (error) { channel.port1.postMessage("abort"); close(); reject(error); }
+                return;
+            }
             close();
             if (typeof event.data?.error === "string") reject(new Error(event.data.error));
             else resolve(event.data.data as T);

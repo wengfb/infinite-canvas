@@ -185,21 +185,25 @@ export function modelCapabilityOf(config: AiConfig, value: string): ModelCapabil
 
 export function modelMatchesCapability(config: AiConfig, value: string, capability?: ModelCapability) {
     if (!capability) return true;
+    if (config.group !== undefined) {
+        const selected = decodeChannelModel(value);
+        return Boolean(config.channels.find((channel) => channel.id === selected?.channelId)?.models.some((model) => model.name === selected?.model && model.capability === capability));
+    }
     return modelCapabilityOf(config, value) === capability;
 }
 
 export function resolveModelForCapability(config: AiConfig, currentModel: string | undefined, capability: ModelCapability) {
     // Existing standalone node selections adopt the host default on first embed.
     // Explicit host selections remain intact if a group/model is later removed.
-    if (config.group !== undefined && capability === "image" && !decodeChannelModel(currentModel || "")?.channelId.startsWith("poopii:")) return config.imageModel;
     const defaultModel = capability === "image" ? config.imageModel : capability === "video" ? config.videoModel : capability === "audio" ? config.audioModel : config.textModel;
+    if (config.group !== undefined && !decodeChannelModel(currentModel || "")?.channelId.startsWith("poopii:")) return defaultModel;
     const fallbackModel = capability === "image" ? defaultConfig.imageModel : capability === "video" ? defaultConfig.videoModel : capability === "audio" ? defaultConfig.audioModel : defaultConfig.textModel;
     for (const model of [currentModel, defaultModel]) {
         if (!model) continue;
         const configuredCapability = modelCapabilityOf(config, model);
         // Keep unavailable selections visible so the readiness check blocks the
         // request. Only a known capability switch may choose another model.
-        if (!configuredCapability || configuredCapability === capability) return model;
+        if (!configuredCapability || modelMatchesCapability(config, model, capability)) return model;
     }
     return fallbackModel;
 }
@@ -216,7 +220,7 @@ export function resolveModelScript(config: AiConfig, value: string) {
 
 function isAiConfigReady(config: AiConfig, model: string) {
     const match = findChannelModel(config, model);
-    if (config.group !== undefined) return Boolean(match?.channel.group && match.model.capability === "image");
+    if (config.group !== undefined) return Boolean(match?.channel.group);
     return Boolean(match && match.channel.baseUrl.trim() && match.channel.apiKey.trim());
 }
 
@@ -314,12 +318,19 @@ export function embeddedImageConfig(config: AiConfig, catalog: PoopiiImageCatalo
         baseUrl: "",
         apiKey: "",
         apiFormat: "openai",
-        models: group.models.map((name) => ({ name, capability: "image" })),
+        models: [
+            ...group.models.map((name) => ({ name, capability: "image" as const })),
+            ...(["text", "audio", "video"] as const).flatMap((capability) => (group.capabilities?.[capability] || []).map((name) => ({ name, capability }))),
+        ],
     }));
-    const preferred = channels.find((channel) => channel.group === catalog?.defaultGroup && channel.models.length) || channels.find((channel) => channel.models.length);
-    const modelName = preferred?.models.find((model) => model.name === modelOptionName(config.imageModel))?.name || preferred?.models[0]?.name;
-    const imageModel = preferred && modelName ? encodeChannelModel(preferred.id, modelName) : "";
-    return { ...config, group: preferred?.group || "", channelMode: "local", channels, models: modelOptionsFromChannels(channels), model: imageModel, imageModel };
+    const defaults = {} as Record<`${ModelCapability}Model`, string>;
+    for (const capability of ["image", "text", "audio", "video"] as const) {
+        const preferred = channels.find((channel) => channel.group === catalog?.defaultGroup && channel.models.some((model) => model.capability === capability)) || channels.find((channel) => channel.models.some((model) => model.capability === capability));
+        const available = preferred?.models.filter((model) => model.capability === capability) || [];
+        const model = available.find((model) => model.name === modelOptionName(config[`${capability}Model`])) || available[0];
+        defaults[`${capability}Model`] = preferred && model ? encodeChannelModel(preferred.id, model.name) : "";
+    }
+    return { ...config, ...defaults, group: catalog?.defaultGroup || "", channelMode: "local", channels, models: modelOptionsFromChannels(channels), model: defaults.imageModel };
 }
 
 /** Normalize a mixed list of raw model names or model objects into deduped ChannelModel entries. */

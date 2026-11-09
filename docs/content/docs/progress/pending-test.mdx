@@ -7,7 +7,7 @@ description: Implemented changes that still need manual verification
 
 The current release needs manual verification in these areas:
 
-- Poopii 嵌入画布：图片节点提示词面板提供分组与模型选择，支持分别搜索和刷新；只列出当前账号可用分组中的生图模型。相同模型在不同分组中必须按所选分组发送，切换节点或刷新后保留各节点的选择；空分组、目录加载失败及已移除模型应阻止生成，独立模式的 API 配置保持原样。
+- Poopii 嵌入画布：图片节点提示词面板提供分组与模型选择，支持分别搜索和刷新；只列出当前账号可用分组中的生图模型。已有生成配置节点内，鼠标点击下拉选项不应触发节点拖动，鼠标和键盘选择都应立即生效；生成按钮应完整保留在节点底部，设置超出高度时可在节点内滚动，并检查明暗主题、控件密度、节点宽度和画布缩放。相同模型在不同分组中必须按所选分组发送，切换节点或刷新后保留各节点的选择；空分组、目录加载失败及已移除模型应阻止生成，独立模式的 API 配置保持原样。
 
 - Saved model selection: save a canvas node with a model, then remove its provider or remove that model while another video model remains the default. Generation, retry and pending-video recovery should keep the unavailable model selected and open configuration instead of sending a request to the default or first provider. Re-selecting a valid model should allow generation. Changing only the API key on the same provider should preserve the model; switching a config node from a valid image model to video should still use the video default.
 
@@ -93,6 +93,10 @@ The Chinese version contains the complete item-by-item acceptance checklist.
 - 支持 `/canvas-app/` 子路径独立部署，由主站 `/canvas` 页面嵌入。
 - 同源消息同步明暗、主题配色、字体、圆角、控件密度和中英语言；保留上游标识与独立运行方式。
 - 请确认画布操作与整体视觉；图片生成和编辑通过主站登录态接口请求，画布不保存主站 token 或渠道密钥；项目仍保存在浏览器本地。
-- 嵌入模式保留图片生成、编辑、图片导入、文本、分组排版、素材库和提示词库；隐藏视频、音频、生成配置节点、Agent/Codex、插件、独立 API 配置、GitHub 和版本入口。创建菜单与图片上传范围同步收敛。
+- 嵌入模式开放图片、文本、音频、视频和生成配置节点，保留分组排版、素材库和提示词库；隐藏 Agent/Codex、插件、独立 API 配置、GitHub 和版本入口。
+- 四类节点的提示词面板及生成配置节点均可选择对应能力的分组与模型，支持搜索和刷新；切换节点、生成模式和刷新页面后应保留各自选择，相同模型在不同分组中应按所选分组请求。继续检查鼠标和键盘选择、窄节点、缩放、明暗主题及底部生成按钮的可点击范围。
+- 文本生成通过主站 Chat Completions 流式输出，目录只展示支持该端点的模型；音频生成通过主站语音接口返回音频。已通过桥接契约和浏览器选择测试，文本及音频仍待真实模型调用验收。
+- 视频提交、查询和内容下载均使用主站登录态，画布保存主站任务 ID，刷新及手动查询复用原任务。已验证真实目录中的「视频」分组及 Seedance2.0、tr_seedance-2.0、tr_seedance-2.0_faceok 模型切换；Seedance2.0 的一次 5 秒文生视频任务已受理，成品播放仍待上游任务完成后验证。
+- Guai 插件只将画布字段转换为对应接口格式：Seedance2.0 使用 duration/ratio，TR 使用 seconds/aspect_ratio；所选分辨率、时长、比例及其他生成参数交给上游校验，画板不按单个渠道收窄通用选项。检查 1080p 请求应保留 resolution=1080p，零值和 false 也应保留。当前插件不支持画布本地参考文件上传，不能把带图片、视频或音频连线的生成视为已接通。
 - 嵌入模式的图片工具栏保留信息、删除、存素材、下载、复制提示词、替换、蒙版编辑、裁剪和预览；节点悬浮工具栏及选择工具栏跟随主站明暗、颜色、圆角与字号。
 - 本地已通过登录态生成一张 gpt-image-2 图片（1024×1024），并验证节点拖动及主站主题同步；图片编辑接口已接入，尚未做真实改图调用。
